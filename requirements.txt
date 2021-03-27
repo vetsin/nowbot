@@ -1,0 +1,4 @@
+pysnc
+discord.py
+aiohttp
+asyncio
