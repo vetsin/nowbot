@@ -1,5 +1,11 @@
+import os
+
 BOT_PREFIX = ('!')
-TOKEN = 'Nzk1MTA5MjMzNDgxMzUxMTcw.X_ElLQ.Hy4mTObzaU0rnW5rZSu2QPo6FF4'
+TOKEN = os.environ['TOKEN']
+WEBHOOK_TOKEN = os.environ['WEBHOOK_TOKEN']
+NOW_INSTANCE = 'https://thetacolab.service-now.com'
+NOW_USER = 'tacobot'
+NOW_PASS = os.environ['NOW_PASS']
 OWNERS = []
 BLACKLIST = []
 

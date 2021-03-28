@@ -2,3 +2,4 @@ pysnc
 discord.py
 aiohttp
 asyncio
+discord-py-slash-command
