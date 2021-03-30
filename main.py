@@ -46,6 +46,14 @@ class NowAgent:
         for e in c_gr:
             yield e
 
+    async def execute_action(self, cmd):
+        # this is where i would call the rest service
+        target = "{url}/api/x_snc_discord/discord/webhook/{token}".format(url=self.client.instance, token=config.WEBHOOK_TOKEN)
+        resp = self.client.session.post(target, json=cmd, headers=dict(Accept="application/json"))
+        print(resp.status_code)
+        print(resp.text)
+        return resp.json()
+
 
 class CommandManager:
     def __init__(self, discord, agent):
@@ -53,7 +61,6 @@ class CommandManager:
         self.req = http.SlashCommandRequest(self.logger, discord, None)
         self.discord = discord
         self.agent = agent
-
 
     def _marshal_option(self, option, choices):
         return {
@@ -75,10 +82,18 @@ class CommandManager:
                 optarr.append(s)
 
             await self.req.add_slash_command(GUILD_ID, cmd.name, cmd.description, optarr)
-
         print(await self.req.get_all_commands())
 
-    def sync(self):
+    async def process_command(self, cmd):
+        print(f"Got slash command: {cmd['data']['name']}")
+        print(cmd)
+        base = {"type": 5} # ACK an interaction and edit to a response later, the user sees a loading state
+        await self.req.post_initial_response(base, cmd['id'], cmd['token'])
+        res = await self.agent.execute_action(cmd)
+        await self.req.post_followup({'content': res['result']}, cmd['token'])
+
+
+def sync(self):
         pass
 
 class NowBot(discord.Client):
@@ -105,7 +120,7 @@ class NowBot(discord.Client):
         if message.author.id in config.BLACKLIST:
             return
 
-        print('Message: %s' % message)
+        #print('Message: %s' % message)
 
     async def on_socket_response(self, msg):
         """
@@ -115,14 +130,7 @@ class NowBot(discord.Client):
             return
 
         to_use = msg["d"]
-
-        print(f"Got slash command: {to_use['data']['name']}")
-        #if to_use["data"]["name"] in self.commands:
-        # respond
-        base = {"type": 5}
-        await self.req.post_initial_response(base, to_use['id'], to_use['token'])
-        await self.req.post_followup({'content': 'test response'}, to_use['token'])
-        #self.dispatch("slash_command")
+        await self.manager.process_command(to_use)
 
     async def process_webhook(self, request):
         token = request.match_info['token']
