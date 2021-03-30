@@ -8,6 +8,78 @@ if not os.path.isfile("config.py"):
 else:
     import config
 
+GUILD_ID = '183730219763499009' # make None when not testing
+
+
+
+class NowAgent:
+
+    def __init__(self, client):
+        self.client = client
+
+    def commands(self):
+        cmd_gr = self.client.GlideRecord('x_snc_discord_commands')
+        cmd_gr.add_active_query()
+        cmd_gr.query()
+        for cmd in cmd_gr:
+            yield cmd
+
+    def options(self, command, typ: int = None):
+        target = command if type(command) == str else command.sys_id
+        s_gr = self.client.GlideRecord('x_snc_discord_command_option')
+        s_gr.fields = 'name,description,type,required'
+        s_gr.add_active_query()
+        oq = s_gr.add_query('command', target)
+        oq.add_or_condition('command_option', target)
+        if typ:
+            s_gr.add_query('type', typ)
+        s_gr.query()
+        for scmd in s_gr:
+            yield scmd
+
+    def choices(self, option):
+        c_gr = self.client.GlideRecord('x_snc_discord_command_option_choice')
+        c_gr.fields = 'name,value'
+        target = option if type(option) == str else option.sys_id
+        c_gr.add_query('option', target)
+        c_gr.query()
+        for e in c_gr:
+            yield e
+
+
+class CommandManager:
+    def __init__(self, discord, agent):
+        self.logger = logging.getLogger("CommandManager")
+        self.req = http.SlashCommandRequest(self.logger, discord, None)
+        self.discord = discord
+        self.agent = agent
+
+
+    def _marshal_option(self, option, choices):
+        return {
+            'name': option.name,
+            'description': option.description,
+            'type': option.type,
+            'required': option.required,
+            'choices': [ {'name':c.name, 'value':c.value} for c in choices ]
+        }
+
+    async def sync_commands(self):
+        commands = self.agent.commands()
+        for cmd in commands:
+            options = self.agent.options(cmd)
+            optarr = []
+            for option in options:
+                choices = self.agent.choices(option)
+                s = self._marshal_option(option, choices)
+                optarr.append(s)
+
+            await self.req.add_slash_command(GUILD_ID, cmd.name, cmd.description, optarr)
+
+        print(await self.req.get_all_commands())
+
+    def sync(self):
+        pass
 
 class NowBot(discord.Client):
     """
@@ -15,14 +87,16 @@ class NowBot(discord.Client):
     """
     def __init__(self):
         self.logger = logging.getLogger("NowBot")
-        self.now = ServiceNowClient(config.NOW_INSTANCE, (config.NOW_USER, config.NOW_PASS))
+        self._now = ServiceNowClient(config.NOW_INSTANCE, (config.NOW_USER, config.NOW_PASS))
+        self.agent = NowAgent(self._now)
         self.req = http.SlashCommandRequest(self.logger, self, None)
+        self.manager = CommandManager(self, self.agent)
         super().__init__()
 
     async def on_ready(self):
         print('Logged on as {0}!'.format(self.user))
-        print(await self.req.get_all_commands())
-
+        await self.manager.sync_commands()
+        #print(await self.req.get_all_commands())
 
     async def on_message(self, message):
         if message.author == self.user or message.author.bot:
@@ -32,6 +106,23 @@ class NowBot(discord.Client):
             return
 
         print('Message: %s' % message)
+
+    async def on_socket_response(self, msg):
+        """
+        :param msg: Gateway message.
+        """
+        if msg["t"] != "INTERACTION_CREATE":
+            return
+
+        to_use = msg["d"]
+
+        print(f"Got slash command: {to_use['data']['name']}")
+        #if to_use["data"]["name"] in self.commands:
+        # respond
+        base = {"type": 5}
+        await self.req.post_initial_response(base, to_use['id'], to_use['token'])
+        await self.req.post_followup({'content': 'test response'}, to_use['token'])
+        #self.dispatch("slash_command")
 
     async def process_webhook(self, request):
         token = request.match_info['token']
