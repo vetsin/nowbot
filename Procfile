@@ -1,1 +1,1 @@
-worker: python nowbot.py
+worker: python main.py
