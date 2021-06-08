@@ -2,6 +2,7 @@ import discord, asyncio, os, platform, sys, logging
 from discord_slash import http
 from pysnc import ServiceNowClient
 from aiohttp import web
+from datetime import datetime
 
 if not os.path.isfile("config.py"):
     sys.exit("'config.py' not found! Please add it and try again.")
@@ -9,7 +10,6 @@ else:
     import config
 
 GUILD_ID = '183730219763499009' # make None when not testing
-
 
 
 class NowAgent:
@@ -23,6 +23,12 @@ class NowAgent:
         cmd_gr.query()
         for cmd in cmd_gr:
             yield cmd
+
+    def roles(self):
+        gr = self.client.GlideRecord('x_snc_discord_discord_role')
+        gr.query()
+        for role in gr:
+            yield role
 
     def options(self, command, typ: int = None):
         target = command if type(command) == str else command.sys_id
@@ -45,6 +51,25 @@ class NowAgent:
         c_gr.query()
         for e in c_gr:
             yield e
+
+    def upsert_role(self, role):
+        gr = self.client.GlideRecord('x_snc_discord_discord_role')
+        if gr.get('id', role.id):
+            gr.name = role.name
+            gr.update()
+            return gr.sys_id
+        else:
+            gr.initalize()
+            gr.id = gr.id
+            gr.name = role.name
+            return gr.insert()
+
+    def clean_roles(self, keep_role_sysids):
+        gr = self.client.GlideRecord('x_snc_discord_discord_role')
+        gr.add_query('sys_id', 'NOTIN', ','.join(keep_role_sysids))
+        gr.query()
+        for r in gr:
+            r.delete()
 
     async def execute_action(self, cmd):
         # this is where i would call the rest service
@@ -82,7 +107,18 @@ class CommandManager:
                 optarr.append(s)
 
             await self.req.add_slash_command(GUILD_ID, cmd.name, cmd.description, optarr)
-        print(await self.req.get_all_commands())
+        #print(await self.req.get_all_commands())
+
+    async def sync_roles(self):
+        sn_roles = self.agent.roles()
+        guild = self.discord.get_guild(GUILD_ID)
+
+        upserted = []
+        for role in guild.roles:
+            upserted.push(self.agent.upsert_role(role))
+
+        # delete old roles
+        self.agent.clean_roles(upserted)
 
     async def process_command(self, cmd):
         print(f"Got slash command: {cmd['data']['name']}")
@@ -136,8 +172,17 @@ class NowBot(discord.Client):
         token = request.match_info['token']
         if token != config.WEBHOOK_TOKEN:
             return web.HTTPForbidden()
-        data = {'some':'data'}
-        return web.json_response(data)
+
+        body = awa=it request.json()
+        resp = {}
+        if 'action' in body:
+            action = body['action']
+            if action == 'sync_commands':
+                self.manager.sync_commands()
+            if action == 'sync_roles':
+                self.manager.sync_roles()
+
+        return web.json_response(resp)
 
 
 async def main(bot) -> None:
