@@ -173,7 +173,7 @@ class NowBot(discord.Client):
         if token != config.WEBHOOK_TOKEN:
             return web.HTTPForbidden()
 
-        body = awa=it request.json()
+        body = await request.json()
         resp = {}
         if 'action' in body:
             action = body['action']
