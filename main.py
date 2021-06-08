@@ -178,9 +178,13 @@ class NowBot(discord.Client):
         if 'action' in body:
             action = body['action']
             if action == 'sync_commands':
-                self.manager.sync_commands()
-            if action == 'sync_roles':
-                self.manager.sync_roles()
+                await self.manager.sync_commands()
+                resp['message'] = 'Commands synced'
+            elif action == 'sync_roles':
+                await self.manager.sync_roles()
+                resp['message'] = 'Roles synced'
+            elif action == 'ping':
+                resp['message'] = 'pong'
 
         return web.json_response(resp)
 
